@@ -48,34 +48,33 @@ func (w *Watcher) watchFolders() error {
 	})
 }
 
-func (w *Watcher) Start(ctx context.Context) {
-	go func() {
-		defer w.watcher.Close()
-		for {
-			select {
+func (w *Watcher) Start(ctx context.Context, onChange func(string)) {
+	defer w.watcher.Close()
+	for {
+		select {
 
-			case <-ctx.Done():
-				log.Println("Stopping file watcher")
+		case <-ctx.Done():
+			log.Println("Stopping file watcher")
+			return
+
+		case event, ok := <-w.watcher.Events:
+			if !ok {
 				return
-
-			case event, ok := <-w.watcher.Events:
-				if !ok {
-					return
-				}
-				if filepath.Base(event.Name)[0] == '.' {
-					continue
-				}
-				if event.Has(fsnotify.Write) {
-					log.Println("modified file:", event.Name)
-				}
-
-			case err, ok := <-w.watcher.Errors:
-				if !ok {
-					return
-				}
-
-				log.Println("error:", err)
 			}
+			if filepath.Base(event.Name)[0] == '.' {
+				continue
+			}
+			if event.Has(fsnotify.Write) {
+				log.Println("modified file:", event.Name)
+				onChange(event.Name)
+			}
+
+		case err, ok := <-w.watcher.Errors:
+			if !ok {
+				return
+			}
+
+			log.Println("error:", err)
 		}
-	}()
+	}
 }

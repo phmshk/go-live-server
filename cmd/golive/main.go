@@ -23,6 +23,9 @@ func main() {
 
 	flag.Parse()
 
+	ctxWatcher, cancelWatcherCtx := context.WithCancel(context.Background())
+	defer cancelWatcherCtx()
+
 	listener, err := utils.GetAvailablePort(*flagPort)
 	if err != nil {
 		log.Fatalf("failed to find an available port: %v", err)
@@ -34,11 +37,9 @@ func main() {
 		log.Fatalf("error creating watcher: %v", err)
 	}
 
-	ctxWatcher, cancelWatcherCtx := context.WithCancel(context.Background())
-	defer cancelWatcherCtx()
-	go w.Start(ctxWatcher)
-
 	s := server.NewServer(listener, *flagDir)
+
+	go w.Start(ctxWatcher, func(fileName string) { s.NotifyClients([]byte("reload")) })
 
 	shutDownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutDownSignal, os.Interrupt, syscall.SIGTERM)
@@ -53,6 +54,7 @@ func main() {
 	}()
 
 	<-shutDownSignal
+	cancelWatcherCtx()
 
 	log.Println("Shutting down...")
 

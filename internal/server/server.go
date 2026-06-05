@@ -13,12 +13,18 @@ type Server struct {
 	dir      string
 	listener net.Listener
 	server   *http.Server
+	broker   *Broker
 }
 
 func NewServer(listener net.Listener, dir string) *Server {
 	fs := http.FileServer(http.Dir(dir))
+
+	broker := NewBroker()
+	go broker.Listen()
+
 	mux := http.NewServeMux()
 	mux.Handle("/", fs)
+	mux.Handle("/live-reload", broker)
 
 	return &Server{
 		listener: listener,
@@ -28,6 +34,7 @@ func NewServer(listener net.Listener, dir string) *Server {
 			ReadTimeout:  15 * time.Second,
 			WriteTimeout: 15 * time.Second,
 		},
+		broker: broker,
 	}
 }
 
@@ -49,4 +56,8 @@ func (s *Server) Start() error {
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
+}
+
+func (s *Server) NotifyClients(msg []byte) {
+	s.broker.Notifier <- msg
 }
