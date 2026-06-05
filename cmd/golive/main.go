@@ -13,6 +13,7 @@ import (
 
 	"github.com/phmshk/go-live-server/internal/server"
 	"github.com/phmshk/go-live-server/internal/utils"
+	"github.com/phmshk/go-live-server/internal/watcher"
 )
 
 func main() {
@@ -27,6 +28,15 @@ func main() {
 		log.Fatalf("failed to find an available port: %v", err)
 	}
 	defer listener.Close()
+
+	w, err := watcher.NewWatcher(*flagDir)
+	if err != nil {
+		log.Fatalf("error creating watcher: %v", err)
+	}
+
+	ctxWatcher, cancelWatcherCtx := context.WithCancel(context.Background())
+	defer cancelWatcherCtx()
+	go w.Start(ctxWatcher)
 
 	s := server.NewServer(listener, *flagDir)
 
@@ -46,10 +56,10 @@ func main() {
 
 	log.Println("Shutting down...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	ctxShutdown, cancelShutdownCtx := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelShutdownCtx()
 
-	if err := s.Shutdown(ctx); err != nil {
+	if err := s.Shutdown(ctxShutdown); err != nil {
 		log.Printf("Server Shutdown Failed:%+v", err)
 	}
 
