@@ -39,13 +39,15 @@ func main() {
 
 	s := server.NewServer(listener, *flagDir)
 
-	go w.Start(ctxWatcher, func(fileName string) { s.NotifyClients([]byte("reload")) })
+	go w.Start(ctxWatcher, func(fileName string) {
+		s.NotifyClients([]byte(fileName))
+	})
 
 	shutDownSignal := make(chan os.Signal, 1)
 	signal.Notify(shutDownSignal, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		if err := s.Start(); err != nil {
+		if err := s.Start(ctxWatcher); err != nil {
 			if errors.Is(err, http.ErrServerClosed) {
 				return
 			}

@@ -20,25 +20,24 @@ func NewServer(listener net.Listener, dir string) *Server {
 	fs := http.FileServer(http.Dir(dir))
 
 	broker := NewBroker()
-	go broker.Listen()
 
 	mux := http.NewServeMux()
-	mux.Handle("/", fs)
+	mux.Handle("/", LiveReloadMiddleware(fs))
 	mux.Handle("/live-reload", broker)
 
 	return &Server{
 		listener: listener,
 		dir:      dir,
 		server: &http.Server{
-			Handler:      mux,
-			ReadTimeout:  15 * time.Second,
-			WriteTimeout: 15 * time.Second,
+			Handler:     mux,
+			ReadTimeout: 15 * time.Second,
+			// WriteTimeout: 15 * time.Second,
 		},
 		broker: broker,
 	}
 }
 
-func (s *Server) Start() error {
+func (s *Server) Start(ctx context.Context) error {
 	_, port, err := net.SplitHostPort(s.listener.Addr().String())
 	if err != nil {
 		port = s.listener.Addr().String()
@@ -59,5 +58,5 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) NotifyClients(msg []byte) {
-	s.broker.Notifier <- msg
+	s.broker.Notify(msg)
 }

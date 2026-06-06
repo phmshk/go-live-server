@@ -1,9 +1,10 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"net"
-	"strings"
+	"syscall"
 )
 
 func GetAvailablePort(startPort int) (net.Listener, error) {
@@ -27,5 +28,5 @@ func isPortInUse(err error) bool {
 		return false
 	}
 
-	return strings.Contains(err.Error(), "already in use")
+	return errors.Is(err, syscall.EADDRINUSE)
 }

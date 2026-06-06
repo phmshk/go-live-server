@@ -3,54 +3,58 @@ package server
 import (
 	"fmt"
 	"net/http"
+	"sync"
 )
 
 type Broker struct {
-	Notifier       chan []byte              // channel for all recievers
-	newClients     chan chan []byte         // channel to register new recievers
-	closingClients chan chan []byte         // channel to delete inactive recievers
-	clients        map[chan []byte]struct{} // map of active clients
+	mu      sync.RWMutex
+	clients map[chan []byte]struct{} // map of active clients
 }
 
 func NewBroker() *Broker {
 	b := &Broker{
-		Notifier:       make(chan []byte, 1),
-		newClients:     make(chan chan []byte),
-		closingClients: make(chan chan []byte),
-		clients:        make(map[chan []byte]struct{}),
+		clients: make(map[chan []byte]struct{}),
 	}
 
 	return b
 }
 
-func (b *Broker) Listen() {
-	for {
+func (b *Broker) Notify(msg []byte) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+
+	for client := range b.clients {
 		select {
-		case newClient := <-b.newClients:
-			b.clients[newClient] = struct{}{}
-
-		case closingClient := <-b.closingClients:
-			delete(b.clients, closingClient)
-			close(closingClient)
-
-		case msg := <-b.Notifier:
-			for client := range b.clients {
-				client <- msg
-			}
+		case client <- msg:
+		default:
 		}
 	}
 }
 
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
 	messageChan := make(chan []byte, 10)
-	b.newClients <- messageChan
+
+	b.mu.Lock()
+	b.clients[messageChan] = struct{}{}
+	b.mu.Unlock()
+
 	defer func() {
-		b.closingClients <- messageChan
+		b.mu.Lock()
+		delete(b.clients, messageChan)
+		b.mu.Unlock()
+		close(messageChan)
 	}()
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
 
 	for {
 		select {
@@ -58,10 +62,11 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 
 		case msg := <-messageChan:
-			fmt.Fprintf(w, "data: %s\n\n", msg)
-			if flusher, ok := w.(http.Flusher); ok {
-				flusher.Flush()
+			_, err := fmt.Fprintf(w, "data: %s\n\n", msg)
+			if err != nil {
+				return
 			}
+			flusher.Flush()
 		}
 	}
 }
