@@ -18,3 +18,5 @@ function updateStylesOnPage() {
     link.href = url.toString();
   }
 }
+
+updateStylesOnPage();

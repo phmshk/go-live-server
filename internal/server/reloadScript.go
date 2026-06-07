@@ -27,6 +27,8 @@ const liveReloadScript = `
     	link.href = url.toString();
   	}
 	}
+
+	updateStylesOnPage();
 })();
 </script>
 `

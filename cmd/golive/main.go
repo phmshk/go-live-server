@@ -37,7 +37,7 @@ func main() {
 		log.Fatalf("error creating watcher: %v", err)
 	}
 
-	s := server.NewServer(listener, *flagDir)
+	s := server.NewServer(listener, *flagDir, ctxWatcher)
 
 	go w.Start(ctxWatcher, func(fileName string) {
 		s.NotifyClients([]byte(fileName))

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -9,11 +10,13 @@ import (
 type Broker struct {
 	mu      sync.RWMutex
 	clients map[chan []byte]struct{} // map of active clients
+	ctx     context.Context
 }
 
-func NewBroker() *Broker {
+func NewBroker(ctx context.Context) *Broker {
 	b := &Broker{
 		clients: make(map[chan []byte]struct{}),
+		ctx:     ctx,
 	}
 
 	return b
@@ -67,6 +70,9 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			flusher.Flush()
+
+		case <-b.ctx.Done():
+			return
 		}
 	}
 }

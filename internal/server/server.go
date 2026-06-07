@@ -16,10 +16,10 @@ type Server struct {
 	broker   *Broker
 }
 
-func NewServer(listener net.Listener, dir string) *Server {
+func NewServer(listener net.Listener, dir string, ctx context.Context) *Server {
 	fs := http.FileServer(http.Dir(dir))
 
-	broker := NewBroker()
+	broker := NewBroker(ctx)
 
 	mux := http.NewServeMux()
 	mux.Handle("/", LiveReloadMiddleware(fs))
