@@ -31,7 +31,6 @@ func NewServer(listener net.Listener, dir string, ctx context.Context) *Server {
 		server: &http.Server{
 			Handler:     mux,
 			ReadTimeout: 15 * time.Second,
-			// WriteTimeout: 15 * time.Second,
 		},
 		broker: broker,
 	}

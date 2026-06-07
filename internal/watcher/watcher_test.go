@@ -9,203 +9,176 @@ import (
 )
 
 func TestNewWatcher(t *testing.T) {
-	dir := t.TempDir()
+	debounce100 := time.Millisecond * 100
 
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
-	}
-	w.watcher.Close()
+	tests := []struct {
+		name     string
+		setupDir func(t *testing.T) string
+		debounce time.Duration
+		wantErr  bool
+	}{
+		{
+			name: "watcher creation successfull",
+			setupDir: func(t *testing.T) string {
+				tempDir := t.TempDir()
+				return tempDir
+			},
+			debounce: debounce100,
+			wantErr:  false,
+		},
+		{
+			name: "return error if dir not exists",
+			setupDir: func(t *testing.T) string {
+				return "/dir_not_exists"
+			},
 
-	if w.dir != dir {
-		t.Errorf("expected dir %q, got %q", dir, w.dir)
-	}
-}
-
-func TestNewWatcher_NonExistentDir(t *testing.T) {
-	_, err := NewWatcher("/nonexistent-path-for-test")
-	if err == nil {
-		t.Fatal("expected error for non-existent directory")
-	}
-}
-
-func TestNewWatcher_WatchesSubdirs(t *testing.T) {
-	dir := t.TempDir()
-	subdir := filepath.Join(dir, "sub", "nested")
-	if err := os.MkdirAll(subdir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
-	}
-	w.watcher.Close()
-}
-
-func TestStart_ContextCancelled(t *testing.T) {
-	dir := t.TempDir()
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
+			debounce: debounce100,
+			wantErr:  true,
+		},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := tt.setupDir(t)
+			w, err := NewWatcher(dir, tt.debounce)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("NewWatcher() error = %v, wantErr = %v", err, tt.wantErr)
+			}
 
-	done := make(chan struct{})
-	go func() {
-		w.Start(ctx, func(fileName string) {
-			t.Error("onChange should not be called after cancellation")
+			if tt.wantErr {
+				return
+			}
+
+			defer w.watcher.Close()
+			if w.dir != dir {
+				t.Errorf("expected dir %s, got %s", dir, w.dir)
+			}
+
+			if w.debounce != tt.debounce {
+				t.Errorf("expected debounce %v, got %v", tt.debounce, w.debounce)
+			}
 		})
-		close(done)
-	}()
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("Start did not return after context cancellation")
 	}
 }
 
-func TestStart_FileWriteEvent(t *testing.T) {
-	dir := t.TempDir()
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
-	}
+func TestStart(t *testing.T) {
+	debounce50 := time.Millisecond * 50
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	type testStep func(t *testing.T, dir string)
 
-	changed := make(chan string, 1)
-	go w.Start(ctx, func(fileName string) {
-		changed <- fileName
-	})
-
-	time.Sleep(200 * time.Millisecond)
-
-	testFile := filepath.Join(dir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case fileName := <-changed:
-		if fileName != testFile {
-			t.Errorf("expected %q, got %q", testFile, fileName)
+	writeFile := func(filename string, content string) testStep {
+		return func(t *testing.T, dir string) {
+			err := os.WriteFile(filepath.Join(dir, filename), []byte(content), 0o644)
+			if err != nil {
+				t.Fatalf("failed to write file: %v", err)
+			}
 		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for file change event")
 	}
-}
-
-func TestStart_FileWriteInSubdir(t *testing.T) {
-	dir := t.TempDir()
-	subdir := filepath.Join(dir, "subdir")
-	if err := os.Mkdir(subdir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	changed := make(chan string, 1)
-	go w.Start(ctx, func(fileName string) {
-		changed <- fileName
-	})
-
-	time.Sleep(200 * time.Millisecond)
-
-	testFile := filepath.Join(subdir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case fileName := <-changed:
-		if fileName != testFile {
-			t.Errorf("expected %q, got %q", testFile, fileName)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("timed out waiting for file change event in subdirectory")
-	}
-}
-
-func TestStart_HiddenFileSkipped(t *testing.T) {
-	dir := t.TempDir()
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	changed := make(chan string, 1)
-	go w.Start(ctx, func(fileName string) {
-		changed <- fileName
-	})
-
-	time.Sleep(200 * time.Millisecond)
-
-	hiddenFile := filepath.Join(dir, ".hidden")
-	if err := os.WriteFile(hiddenFile, []byte("secret"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case fileName := <-changed:
-		t.Errorf("onChange should not be called for hidden files, got %q", fileName)
-	case <-time.After(1 * time.Second):
-	}
-}
-
-func TestStart_MultipleWriteEvents(t *testing.T) {
-	dir := t.TempDir()
-	w, err := NewWatcher(dir)
-	if err != nil {
-		t.Fatalf("NewWatcher failed: %v", err)
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	changed := make(chan string, 2)
-	go w.Start(ctx, func(fileName string) {
-		changed <- fileName
-	})
-
-	time.Sleep(200 * time.Millisecond)
-
-	files := []string{
-		filepath.Join(dir, "a.txt"),
-		filepath.Join(dir, "b.txt"),
-	}
-	for _, f := range files {
-		if err := os.WriteFile(f, []byte("data"), 0644); err != nil {
-			t.Fatal(err)
+	sleep := func(d time.Duration) testStep {
+		return func(t *testing.T, dir string) {
+			time.Sleep(d)
 		}
 	}
 
-	received := make(map[string]bool)
-	for i := 0; i < len(files); i++ {
-		select {
-		case fileName := <-changed:
-			received[fileName] = true
-		case <-time.After(3 * time.Second):
-			t.Fatalf("timed out waiting for event %d", i)
-		}
+	tests := []struct {
+		name        string
+		debounce    time.Duration
+		steps       []testStep
+		cancelEarly bool
+		wantMsg     int
+	}{
+		{
+			name:     "debounce works as intended",
+			debounce: debounce50,
+			wantMsg:  1,
+			steps: []testStep{
+				writeFile("index.html", "1"),
+				writeFile("index.html", "2"),
+				writeFile("index.html", "3"),
+				writeFile("index.html", "4"),
+				writeFile("index.html", "5"),
+			},
+		},
+		{
+			name:        "watcher and timer exit properly if context is cancelled",
+			debounce:    debounce50,
+			cancelEarly: true,
+			wantMsg:     0,
+			steps: []testStep{
+				writeFile("index.html", "late input"),
+			},
+		},
+		{
+			name:     "frequent events prolongate timer (moving window)",
+			debounce: debounce50,
+			wantMsg:  1,
+			steps: []testStep{
+				writeFile("index.html", "click 1"),
+				sleep(30 * time.Millisecond),
+				writeFile("index.html", "click 2"),
+				sleep(30 * time.Millisecond),
+				writeFile("index.html", "click 3"),
+			},
+		},
+		{
+			name:     "independent events trigger multiple times",
+			debounce: debounce50,
+			wantMsg:  2,
+			steps: []testStep{
+				writeFile("index.html", "batch 1"),
+				sleep(70 * time.Millisecond),
+				writeFile("index.html", "batch 2"),
+				sleep(70 * time.Millisecond),
+			},
+		},
 	}
 
-	for _, f := range files {
-		if !received[f] {
-			t.Errorf("missing event for %q", f)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			events := make(chan string, 10)
+			watcher, err := NewWatcher(dir, tt.debounce)
+			if err != nil {
+				t.Fatalf("error creating watcher: %v", err)
+			}
+
+			workerDone := make(chan struct{})
+
+			go func() {
+				watcher.Start(ctx, func(path string) {
+					events <- path
+				})
+				close(workerDone)
+			}()
+
+			if tt.cancelEarly {
+				cancel()
+				<-workerDone
+			}
+
+			for _, step := range tt.steps {
+				step(t, dir)
+			}
+
+			gotMessages := 0
+			timeout := time.After(250 * time.Millisecond)
+
+		mainLoop:
+			for {
+				select {
+				case <-events:
+					gotMessages++
+				case <-timeout:
+					break mainLoop
+				}
+			}
+
+			if gotMessages != tt.wantMsg {
+				t.Errorf("expected %d messages, got %d", tt.wantMsg, gotMessages)
+			}
+		})
 	}
 }

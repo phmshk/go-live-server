@@ -32,7 +32,7 @@ func main() {
 	}
 	defer listener.Close()
 
-	w, err := watcher.NewWatcher(*flagDir)
+	w, err := watcher.NewWatcher(*flagDir, 100*time.Millisecond)
 	if err != nil {
 		log.Fatalf("error creating watcher: %v", err)
 	}

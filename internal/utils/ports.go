@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"syscall"
 )
@@ -19,6 +20,7 @@ func GetAvailablePort(startPort int) (net.Listener, error) {
 			return nil, err
 		}
 
+		log.Printf("Port busy, retrying on %d\n", port+1)
 		port++
 	}
 }

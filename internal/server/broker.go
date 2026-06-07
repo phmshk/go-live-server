@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 )
@@ -55,7 +56,8 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		http.Error(w, "Flusher unsupported", http.StatusInternalServerError)
+		log.Println("Flusher unsupported")
 		return
 	}
 
