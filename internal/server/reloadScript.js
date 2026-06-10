@@ -9,6 +9,10 @@ es.onmessage = (event) => {
   }
 };
 
+window.addEventListener("beforeunload", () => {
+  es.close();
+});
+
 function updateStylesOnPage(fileName) {
   const linkTags = document.querySelectorAll('link[rel="stylesheet"]');
 

@@ -38,10 +38,9 @@ func (b *Broker) Notify(msg []byte) {
 func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	messageChan := make(chan []byte, 10)
+	messageChan := make(chan []byte, 1)
 
 	b.mu.Lock()
 	b.clients[messageChan] = struct{}{}
@@ -51,7 +50,6 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		b.mu.Lock()
 		delete(b.clients, messageChan)
 		b.mu.Unlock()
-		close(messageChan)
 	}()
 
 	flusher, ok := w.(http.Flusher)
@@ -61,9 +59,13 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	flusher.Flush()
 	for {
 		select {
 		case <-r.Context().Done():
+			return
+
+		case <-b.ctx.Done():
 			return
 
 		case msg := <-messageChan:
@@ -73,8 +75,6 @@ func (b *Broker) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			flusher.Flush()
 
-		case <-b.ctx.Done():
-			return
 		}
 	}
 }
