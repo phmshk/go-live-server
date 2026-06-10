@@ -21,15 +21,17 @@ func NewServer(listener net.Listener, dir string, ctx context.Context) *Server {
 
 	broker := NewBroker(ctx)
 
+	staticHandler := CacheControlMiddleware(LiveReloadMiddleware(fs))
+
 	mux := http.NewServeMux()
-	mux.Handle("/", LiveReloadMiddleware(fs))
+	mux.Handle("/", staticHandler)
 	mux.Handle("/live-reload", broker)
 
 	return &Server{
 		listener: listener,
 		dir:      dir,
 		server: &http.Server{
-			Handler:     mux,
+			Handler:     LoggingMiddleware(mux),
 			ReadTimeout: 15 * time.Second,
 		},
 		broker: broker,
