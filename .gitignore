@@ -5,7 +5,10 @@ bin/
 *.so
 *.dylib
 
+dist/
+public/
 go-live-server
+gls*
 
 .idea/
 .vscode/

@@ -55,7 +55,6 @@ func (w *Watcher) watchFolders() error {
 		}
 
 		if info.IsDir() {
-			log.Printf("Watching folder: %s", path)
 			return w.watcher.Add(path)
 		}
 		return nil
