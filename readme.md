@@ -2,7 +2,7 @@
 
 A lightweight Live Server CLI for frontend developers, written in Go.
 
-> **Status:** In active development.
+> **Status:** not working on it.
 
 ## Getting Started
 
